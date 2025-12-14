@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -8,6 +8,7 @@ import {
   List,
   Modal,
   Radio,
+  Select,
   Typography,
   message,
   Spin,
@@ -31,6 +32,487 @@ type Order = {
   subtotal: number | string | null;
   totalimpuesto1: number | string | null;
 };
+type Option = { value: string; label: string };
+
+// ===== Régimen fiscal (taxSystem) =====
+const TAX_SYSTEM_OPTIONS: Option[] = [
+  { value: "601", label: "601 - General de Ley Personas Morales" },
+  { value: "603", label: "603 - Personas Morales con Fines no Lucrativos" },
+  {
+    value: "605",
+    label: "605 - Sueldos y Salarios e Ingresos Asimilados a Salarios",
+  },
+  { value: "606", label: "606 - Arrendamiento" },
+  {
+    value: "607",
+    label: "607 - Régimen de Enajenación o Adquisición de Bienes",
+  },
+  { value: "608", label: "608 - Demás ingresos" },
+  { value: "609", label: "609 - Consolidación" },
+  { value: "610", label: "610 - Residentes en el Extranjero sin EP en México" },
+  {
+    value: "611",
+    label: "611 - Ingresos por Dividendos (socios y accionistas)",
+  },
+  {
+    value: "612",
+    label:
+      "612 - Personas Físicas con Actividades Empresariales y Profesionales",
+  },
+  { value: "614", label: "614 - Ingresos por intereses" },
+  {
+    value: "615",
+    label: "615 - Régimen de los ingresos por obtención de premios",
+  },
+  { value: "616", label: "616 - Sin obligaciones fiscales" },
+  {
+    value: "620",
+    label:
+      "620 - Sociedades Cooperativas de Producción que optan por diferir sus ingresos",
+  },
+  { value: "621", label: "621 - Incorporación Fiscal" },
+  {
+    value: "622",
+    label: "622 - Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras",
+  },
+  { value: "623", label: "623 - Opcional para Grupos de Sociedades" },
+  { value: "624", label: "624 - Coordinados" },
+  {
+    value: "625",
+    label:
+      "625 - Actividades Empresariales con ingresos a través de Plataformas Tecnológicas",
+  },
+  { value: "626", label: "626 - Régimen Simplificado de Confianza" },
+  { value: "628", label: "628 - Hidrocarburos" },
+  {
+    value: "629",
+    label: "629 - Regímenes Fiscales Preferentes y Multinacionales",
+  },
+  { value: "630", label: "630 - Enajenación de acciones en bolsa de valores" },
+];
+
+// ===== Uso CFDI (depende del régimen) =====
+type CfdiUse = { value: string; label: string; allowedTaxSystems: string[] };
+
+const CFDI_USE_OPTIONS: CfdiUse[] = [
+  {
+    value: "G01",
+    label: "G01 - Adquisición de mercancías",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "G02",
+    label: "G02 - Devoluciones, descuentos o bonificaciones",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "G03",
+    label: "G03 - Gastos en general",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+
+  {
+    value: "I01",
+    label: "I01 - Construcciones",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I02",
+    label: "I02 - Mobiliario y equipo de oficina por inversiones",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I03",
+    label: "I03 - Equipo de transporte",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I04",
+    label: "I04 - Equipo de cómputo y accesorios",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I05",
+    label: "I05 - Dados, troqueles, moldes, matrices y herramental",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I06",
+    label: "I06 - Comunicaciones telefónicas",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I07",
+    label: "I07 - Comunicaciones satelitales",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "I08",
+    label: "I08 - Otra maquinaria y equipo",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "606",
+      "612",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "625",
+      "626",
+    ],
+  },
+
+  {
+    value: "D01",
+    label: "D01 - Honorarios médicos, dentales y gastos hospitalarios",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D02",
+    label: "D02 - Gastos médicos por incapacidad o discapacidad",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D03",
+    label: "D03 - Gastos funerales",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D04",
+    label: "D04 - Donativos",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D05",
+    label: "D05 - Intereses reales por créditos hipotecarios",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D06",
+    label: "D06 - Aportaciones voluntarias al SAR",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D07",
+    label: "D07 - Primas por seguros de gastos médicos",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D08",
+    label: "D08 - Gastos de transportación escolar obligatoria",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D09",
+    label: "D09 - Depósitos en cuentas para el ahorro / planes de pensiones",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+  {
+    value: "D10",
+    label: "D10 - Servicios educativos (colegiaturas)",
+    allowedTaxSystems: [
+      "605",
+      "606",
+      "608",
+      "611",
+      "612",
+      "614",
+      "607",
+      "615",
+      "625",
+    ],
+  },
+
+  {
+    value: "S01",
+    label: "S01 - Sin efectos fiscales",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "605",
+      "606",
+      "608",
+      "610",
+      "611",
+      "612",
+      "614",
+      "616",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "607",
+      "615",
+      "625",
+      "626",
+    ],
+  },
+  {
+    value: "CP01",
+    label: "CP01 - Pagos",
+    allowedTaxSystems: [
+      "601",
+      "603",
+      "605",
+      "606",
+      "608",
+      "610",
+      "611",
+      "612",
+      "614",
+      "616",
+      "620",
+      "621",
+      "622",
+      "623",
+      "624",
+      "607",
+      "615",
+      "625",
+      "626",
+    ],
+  },
+  { value: "CN01", label: "CN01 - Nómina", allowedTaxSystems: ["605"] },
+];
+
+// ===== Forma de pago =====
+const PAYMENT_FORM_OPTIONS: Option[] = [
+  { value: "01", label: "01 - Efectivo" },
+  { value: "02", label: "02 - Cheque nominativo" },
+  { value: "03", label: "03 - Transferencia electrónica de fondos" },
+  { value: "04", label: "04 - Tarjeta de crédito" },
+  { value: "05", label: "05 - Monedero electrónico" },
+  { value: "06", label: "06 - Dinero electrónico" },
+  { value: "08", label: "08 - Vales de despensa" },
+  { value: "12", label: "12 - Dación en pago" },
+  { value: "13", label: "13 - Pago por subrogación" },
+  { value: "14", label: "14 - Pago por consignación" },
+  { value: "15", label: "15 - Condonación" },
+  { value: "17", label: "17 - Compensación" },
+  { value: "23", label: "23 - Novación" },
+  { value: "24", label: "24 - Confusión" },
+  { value: "25", label: "25 - Remisión de deuda" },
+  { value: "26", label: "26 - Prescripción o caducidad" },
+  { value: "27", label: "27 - A satisfacción del acreedor" },
+  { value: "28", label: "28 - Tarjeta de débito" },
+  { value: "29", label: "29 - Tarjeta de servicios" },
+  { value: "30", label: "30 - Aplicación de anticipos" },
+  { value: "31", label: "31 - Intermediario pagos" },
+  { value: "99", label: "99 - Por definir" },
+];
 
 function todayUtcYYYYMMDD() {
   const d = new Date();
@@ -55,6 +537,26 @@ export default function App() {
   const [pdfUrl, setPdfUrl] = useState("");
   const [loadingLookup, setLoadingLookup] = useState(false);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+
+  const [form] = Form.useForm();
+
+  const watchedTaxSystem = Form.useWatch("taxSystem", form) || "601";
+  const watchedCfdiUse = Form.useWatch("cfdiUse", form);
+
+  const cfdiUseOptions = useMemo(() => {
+    return CFDI_USE_OPTIONS.filter((x) =>
+      x.allowedTaxSystems.includes(String(watchedTaxSystem))
+    ).map((x) => ({ value: x.value, label: x.label }));
+  }, [watchedTaxSystem]);
+
+  useEffect(() => {
+    // Si el régimen cambia y el CFDI actual ya no es válido, lo reseteamos al primero permitido
+    if (!cfdiUseOptions.length) return;
+    const isValid = cfdiUseOptions.some((o) => o.value === watchedCfdiUse);
+    if (!isValid) {
+      form.setFieldsValue({ cfdiUse: cfdiUseOptions[0].value });
+    }
+  }, [cfdiUseOptions, watchedCfdiUse, form]);
 
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedOrderId) || null,
@@ -287,9 +789,15 @@ export default function App() {
             }
           >
             <Form
+              form={form}
               layout="vertical"
               onFinish={generarFactura}
               disabled={!selectedOrder}
+              initialValues={{
+                taxSystem: "601",
+                cfdiUse: "G03",
+                paymentForm: "03",
+              }}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Form.Item
@@ -302,15 +810,18 @@ export default function App() {
                   <Input placeholder="Ej: Juan Pérez SA de CV" />
                 </Form.Item>
                 <Form.Item
-                  label="Régimen fiscal (taxSystem)"
+                  label="Régimen fiscal"
                   name="taxSystem"
-                  initialValue="601"
                   rules={[
                     { required: true, message: "Este campo es obligatorio" },
-                    { len: 3, message: "Debe ser de 3 caracteres (ej: 601)" },
                   ]}
                 >
-                  <Input placeholder="601" />
+                  <Select
+                    showSearch
+                    options={TAX_SYSTEM_OPTIONS}
+                    placeholder="Selecciona régimen fiscal"
+                    optionFilterProp="label"
+                  />
                 </Form.Item>
 
                 <Form.Item
@@ -331,16 +842,35 @@ export default function App() {
                   <Input placeholder="Ej: 03100" />
                 </Form.Item>
 
-                <Form.Item label="Uso CFDI" name="cfdiUse" initialValue="G03">
-                  <Input placeholder="G03" />
+                <Form.Item
+                  label="Uso CFDI"
+                  name="cfdiUse"
+                  rules={[
+                    { required: true, message: "Selecciona el uso CFDI" },
+                  ]}
+                >
+                  <Select
+                    showSearch
+                    options={cfdiUseOptions}
+                    placeholder="Selecciona uso CFDI"
+                    optionFilterProp="label"
+                    disabled={!cfdiUseOptions.length}
+                  />
                 </Form.Item>
 
                 <Form.Item
                   label="Forma de pago"
                   name="paymentForm"
-                  initialValue="03"
+                  rules={[
+                    { required: true, message: "Selecciona la forma de pago" },
+                  ]}
                 >
-                  <Input placeholder="03" />
+                  <Select
+                    showSearch
+                    options={PAYMENT_FORM_OPTIONS}
+                    placeholder="Selecciona forma de pago"
+                    optionFilterProp="label"
+                  />
                 </Form.Item>
               </div>
 
