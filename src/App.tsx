@@ -13,6 +13,9 @@ import {
   message,
   Spin,
 } from "antd";
+import ReCAPTCHA from "react-google-recaptcha";
+import { FiMail, FiPhone, FiHelpCircle, FiCheckCircle } from "react-icons/fi";
+import NotaEjemplo from "./assets/nota-ejemplo.png";
 
 import type { RadioChangeEvent } from "antd";
 import dayjs, { Dayjs } from "dayjs";
@@ -31,7 +34,10 @@ type Order = {
   total: number | string | null;
   subtotal: number | string | null;
   totalimpuesto1: number | string | null;
+  invoiceId?: number | null;
+  emailedAt?: string | null;
 };
+
 type Option = { value: string; label: string };
 
 // ===== Régimen fiscal (taxSystem) =====
@@ -523,6 +529,9 @@ function todayUtcYYYYMMDD() {
 }
 
 export default function App() {
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const [doneModalOpen, setDoneModalOpen] = useState(false);
+
   const [date, setDate] = useState<string>(() => todayUtcYYYYMMDD());
   const [numcheque, setNumcheque] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -617,6 +626,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: selectedOrderId,
+          recaptchaToken,
           customer: {
             legalName: values.legalName,
             taxId: values.taxId,
@@ -642,6 +652,7 @@ export default function App() {
       setLastCustomerEmail(values.email || "");
       setPdfModalOpen(true);
       message.success("Factura generada.");
+      setDoneModalOpen(true);
     } catch (e: any) {
       message.error(e?.message || "Error de red.");
     } finally {
@@ -676,249 +687,388 @@ export default function App() {
       setSendingEmail(false);
     }
   }
+  const isInvoiced = !!selectedOrder?.invoiceId;
 
   const dateValue: Dayjs | null = date ? dayjs(date, "YYYY-MM-DD") : null;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-4xl px-4 py-10">
-        <div className="mb-6">
-          <Title level={2} className="mb-1">
-            Solicitar factura
-          </Title>
-          <Text type="secondary">
-            Busca tu consumo por <b>fecha</b> y <b>numcheque</b>. Si hay
-            duplicados, elige el correcto.
-          </Text>
-        </div>
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <div className="mb-6">
+              <Title level={2} className="mb-1">
+                SISTEMA DE FACTURACION DE CANTINA LA LLORONA
+              </Title>
 
-        <Card className="shadow-sm" title="1) Buscar tu consumo">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-end">
-            <div>
-              <Text className="block mb-1" type="secondary">
-                Fecha (YYYY-MM-DD)
+              <Text type="secondary">
+                Busca tu consumo por <b>fecha</b> y <b>numcheque</b>. Si hay
+                duplicados, elige el correcto.
               </Text>
-              <DatePicker
-                className="w-full"
-                value={dateValue}
-                format="YYYY-MM-DD"
-                onChange={(v) => setDate(v ? v.format("YYYY-MM-DD") : "")}
-                placeholder="YYYY-MM-DD"
-              />
             </div>
 
-            <div>
-              <Text className="block mb-1" type="secondary">
-                Numcheque
-              </Text>
-              <Input
-                value={numcheque}
-                onChange={(e) => setNumcheque(e.target.value)}
-                placeholder="Ej: 12345"
-              />
-            </div>
-            <Text className="block mt-1 text-xs" type="secondary">
-              Tip: tu API busca por rango UTC del día.
-            </Text>
-            <Button type="primary" onClick={lookup} disabled={loadingLookup}>
-              {loadingLookup ? (
-                <>
-                  <Spin size="small" />{" "}
-                  <span className="ml-2">Buscando...</span>
-                </>
-              ) : (
-                "Buscar"
+            <Card className="shadow-sm" title="1) Buscar tu consumo">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-end">
+                <div>
+                  <Text className="block mb-1" type="secondary">
+                    Fecha (YYYY-MM-DD)
+                  </Text>
+                  <DatePicker
+                    className="w-full"
+                    value={dateValue}
+                    format="YYYY-MM-DD"
+                    onChange={(v) => setDate(v ? v.format("YYYY-MM-DD") : "")}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </div>
+
+                <div>
+                  <Text className="block mb-1" type="secondary">
+                    Numcheque
+                  </Text>
+                  <Input
+                    value={numcheque}
+                    onChange={(e) => setNumcheque(e.target.value)}
+                    placeholder="Ej: 12345"
+                  />
+                </div>
+                <Text className="block mt-1 text-xs" type="secondary">
+                  Tip: tu API busca por rango UTC del día.
+                </Text>
+                <Button
+                  type="primary"
+                  onClick={lookup}
+                  disabled={loadingLookup}
+                >
+                  {loadingLookup ? (
+                    <>
+                      <Spin size="small" />{" "}
+                      <span className="ml-2">Buscando...</span>
+                    </>
+                  ) : (
+                    "Buscar"
+                  )}
+                </Button>
+              </div>
+
+              {orders.length > 0 && (
+                <div className="mt-5">
+                  <Text strong>Resultados</Text>
+
+                  <div className="mt-3">
+                    <Radio.Group
+                      onChange={(e: RadioChangeEvent) =>
+                        setSelectedOrderId(Number(e.target.value))
+                      }
+                      value={selectedOrderId ?? undefined}
+                      className="w-full"
+                    >
+                      <List
+                        bordered
+                        dataSource={orders}
+                        renderItem={(o) => (
+                          <List.Item className="px-3">
+                            <Radio value={o.id} className="w-full">
+                              <div className="flex flex-col gap-1">
+                                <div className="font-semibold">
+                                  Folio: {o.folio} · Numcheque: {o.numcheque} ·
+                                  ID: {o.id}
+                                  {o.invoiceId ? (
+                                    <span className="ml-2 text-xs text-green-600">
+                                      FACTURADA
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="text-slate-600 text-sm">
+                                  Fecha: {o.fecha}{" "}
+                                  {o.mesa ? `· Mesa: ${o.mesa}` : ""} · Total:{" "}
+                                  {String(o.total ?? "")}
+                                </div>
+                              </div>
+                            </Radio>
+                          </List.Item>
+                        )}
+                      />
+                    </Radio.Group>
+                  </div>
+                </div>
               )}
-            </Button>
-          </div>
+            </Card>
 
-          {orders.length > 0 && (
-            <div className="mt-5">
-              <Text strong>Resultados</Text>
-
-              <div className="mt-3">
-                <Radio.Group
-                  onChange={(e: RadioChangeEvent) =>
-                    setSelectedOrderId(Number(e.target.value))
-                  }
-                  value={selectedOrderId ?? undefined}
-                  className="w-full"
-                >
-                  <List
-                    bordered
-                    dataSource={orders}
-                    renderItem={(o) => (
-                      <List.Item className="px-3">
-                        <Radio value={o.id} className="w-full">
-                          <div className="flex flex-col gap-1">
-                            <div className="font-semibold">
-                              Folio: {o.folio} · Numcheque: {o.numcheque} · ID:{" "}
-                              {o.id}
-                            </div>
-                            <div className="text-slate-600 text-sm">
-                              Fecha: {o.fecha}{" "}
-                              {o.mesa ? `· Mesa: ${o.mesa}` : ""} · Total:{" "}
-                              {String(o.total ?? "")}
-                            </div>
-                          </div>
-                        </Radio>
-                      </List.Item>
-                    )}
-                  />
-                </Radio.Group>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        <div className="mt-6">
-          <Card
-            className="shadow-sm"
-            title="2) Datos fiscales"
-            extra={
-              selectedOrder ? (
-                <Text type="secondary">
-                  Orden: <b>ID {selectedOrder.id}</b> · Total:{" "}
-                  <b>{String(selectedOrder.total ?? "")}</b>
-                </Text>
-              ) : (
-                <Text type="secondary">
-                  Selecciona una orden para continuar
-                </Text>
-              )
-            }
-          >
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={generarFactura}
-              disabled={!selectedOrder}
-              initialValues={{
-                taxSystem: "601",
-                cfdiUse: "G03",
-                paymentForm: "03",
-              }}
-            >
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Form.Item
-                  label="Razón social / Nombre"
-                  name="legalName"
-                  rules={[
-                    { required: true, message: "Este campo es obligatorio" },
-                  ]}
-                >
-                  <Input placeholder="Ej: Juan Pérez SA de CV" />
-                </Form.Item>
-                <Form.Item
-                  label="Régimen fiscal"
-                  name="taxSystem"
-                  rules={[
-                    { required: true, message: "Este campo es obligatorio" },
-                  ]}
-                >
-                  <Select
-                    showSearch
-                    options={TAX_SYSTEM_OPTIONS}
-                    placeholder="Selecciona régimen fiscal"
-                    optionFilterProp="label"
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label="RFC"
-                  name="taxId"
-                  rules={[
-                    { required: true, message: "Este campo es obligatorio" },
-                  ]}
-                >
-                  <Input placeholder="Ej: XAXX010101000" />
-                </Form.Item>
-
-                <Form.Item label="Email" name="email">
-                  <Input placeholder="correo@ejemplo.com" />
-                </Form.Item>
-
-                <Form.Item label="Código Postal (CP)" name="zip">
-                  <Input placeholder="Ej: 03100" />
-                </Form.Item>
-
-                <Form.Item
-                  label="Uso CFDI"
-                  name="cfdiUse"
-                  rules={[
-                    { required: true, message: "Selecciona el uso CFDI" },
-                  ]}
-                >
-                  <Select
-                    showSearch
-                    options={cfdiUseOptions}
-                    placeholder="Selecciona uso CFDI"
-                    optionFilterProp="label"
-                    disabled={!cfdiUseOptions.length}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label="Forma de pago"
-                  name="paymentForm"
-                  rules={[
-                    { required: true, message: "Selecciona la forma de pago" },
-                  ]}
-                >
-                  <Select
-                    showSearch
-                    options={PAYMENT_FORM_OPTIONS}
-                    placeholder="Selecciona forma de pago"
-                    optionFilterProp="label"
-                  />
-                </Form.Item>
-              </div>
-
-              <Button type="primary" htmlType="submit" loading={loadingInvoice}>
-                Generar factura
-              </Button>
-            </Form>
-          </Card>
-        </div>
-
-        <Modal
-          open={pdfModalOpen}
-          onCancel={() => setPdfModalOpen(false)}
-          footer={null}
-          width={980}
-          title="Factura (PDF)"
-        >
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button href={pdfUrl} target="_blank" disabled={!pdfUrl}>
-                Abrir / Descargar PDF
-              </Button>
-
-              <Button href={zipUrl} target="_blank" disabled={!zipUrl}>
-                Descargar ZIP (PDF+XML)
-              </Button>
-
-              <Button
-                type="primary"
-                onClick={enviarFacturaEmail}
-                loading={sendingEmail}
-                disabled={!invoiceId || !lastCustomerEmail}
+            <div className="mt-6">
+              <Card
+                className="shadow-sm"
+                title="2) Datos fiscales"
+                extra={
+                  selectedOrder ? (
+                    <Text type="secondary">
+                      Orden: <b>ID {selectedOrder.id}</b> · Total:{" "}
+                      <b>{String(selectedOrder.total ?? "")}</b>
+                    </Text>
+                  ) : (
+                    <Text type="secondary">
+                      Selecciona una orden para continuar
+                    </Text>
+                  )
+                }
               >
-                Enviar a email
-              </Button>
+                {isInvoiced ? (
+                  <div className="flex flex-col gap-2">
+                    <Text>
+                      Esta orden ya tiene factura. Si no la recibiste, contacta
+                      a administración.
+                    </Text>
+                  </div>
+                ) : (
+                  <Form
+                    form={form}
+                    layout="vertical"
+                    onFinish={generarFactura}
+                    disabled={!selectedOrder}
+                    initialValues={{
+                      taxSystem: "601",
+                      cfdiUse: "G03",
+                      paymentForm: "03",
+                    }}
+                  >
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <Form.Item
+                        label="Razón social / Nombre"
+                        name="legalName"
+                        rules={[
+                          {
+                            required: true,
+                            message: "Este campo es obligatorio",
+                          },
+                        ]}
+                      >
+                        <Input placeholder="Ej: Juan Pérez SA de CV" />
+                      </Form.Item>
+                      <Form.Item
+                        label="Régimen fiscal"
+                        name="taxSystem"
+                        rules={[
+                          {
+                            required: true,
+                            message: "Este campo es obligatorio",
+                          },
+                        ]}
+                      >
+                        <Select
+                          showSearch
+                          options={TAX_SYSTEM_OPTIONS}
+                          placeholder="Selecciona régimen fiscal"
+                          optionFilterProp="label"
+                        />
+                      </Form.Item>
 
-              <Text type="secondary" className="truncate">
-                {lastCustomerEmail
-                  ? `Enviar a: ${lastCustomerEmail}`
-                  : "Sin email capturado"}
-              </Text>
+                      <Form.Item
+                        label="RFC"
+                        name="taxId"
+                        rules={[
+                          {
+                            required: true,
+                            message: "Este campo es obligatorio",
+                          },
+                        ]}
+                      >
+                        <Input placeholder="Ej: XAXX010101000" />
+                      </Form.Item>
+
+                      <Form.Item
+                        label="Email"
+                        name="email"
+                        rules={[
+                          {
+                            required: true,
+                            message: "El email es obligatorio",
+                          },
+                          { type: "email", message: "Email inválido" },
+                        ]}
+                      >
+                        <Input placeholder="correo@ejemplo.com" />
+                      </Form.Item>
+
+                      <Form.Item label="Código Postal (CP)" name="zip">
+                        <Input placeholder="Ej: 03100" />
+                      </Form.Item>
+
+                      <Form.Item
+                        label="Uso CFDI"
+                        name="cfdiUse"
+                        rules={[
+                          { required: true, message: "Selecciona el uso CFDI" },
+                        ]}
+                      >
+                        <Select
+                          showSearch
+                          options={cfdiUseOptions}
+                          placeholder="Selecciona uso CFDI"
+                          optionFilterProp="label"
+                          disabled={!cfdiUseOptions.length}
+                        />
+                      </Form.Item>
+
+                      <Form.Item
+                        label="Forma de pago"
+                        name="paymentForm"
+                        rules={[
+                          {
+                            required: true,
+                            message: "Selecciona la forma de pago",
+                          },
+                        ]}
+                      >
+                        <Select
+                          showSearch
+                          options={PAYMENT_FORM_OPTIONS}
+                          placeholder="Selecciona forma de pago"
+                          optionFilterProp="label"
+                        />
+                      </Form.Item>
+                    </div>
+                    <div className="mt-2">
+                      <Text type="secondary" className="block mb-2">
+                        Verificación anti-robot
+                      </Text>
+                      <ReCAPTCHA
+                        sitekey={
+                          import.meta.env.VITE_RECAPTCHA_SITE_KEY as string
+                        }
+                        onChange={(token) => setRecaptchaToken(token)}
+                      />
+                    </div>
+
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={loadingInvoice}
+                      disabled={!recaptchaToken}
+                    >
+                      Generar factura
+                    </Button>
+                  </Form>
+                )}
+              </Card>
             </div>
 
-            <div className="h-[350px] w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <iframe src={pdfUrl} className="h-full w-full" />
-            </div>
+            <Modal
+              open={pdfModalOpen}
+              onCancel={() => setPdfModalOpen(false)}
+              footer={null}
+              width={980}
+              title="Factura (PDF)"
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button href={pdfUrl} target="_blank" disabled={!pdfUrl}>
+                    Abrir / Descargar PDF
+                  </Button>
+
+                  <Button href={zipUrl} target="_blank" disabled={!zipUrl}>
+                    Descargar ZIP (PDF+XML)
+                  </Button>
+
+                  <Button
+                    type="primary"
+                    onClick={enviarFacturaEmail}
+                    loading={sendingEmail}
+                    disabled={!invoiceId || !lastCustomerEmail}
+                  >
+                    Enviar a email
+                  </Button>
+
+                  <Text type="secondary" className="truncate">
+                    {lastCustomerEmail
+                      ? `Enviar a: ${lastCustomerEmail}`
+                      : "Sin email capturado"}
+                  </Text>
+                </div>
+
+                <div className="h-[350px] w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <iframe src={pdfUrl} className="h-full w-full" />
+                </div>
+              </div>
+            </Modal>
+            <Modal
+              open={doneModalOpen}
+              onCancel={() => setDoneModalOpen(false)}
+              footer={null}
+              title={null}
+            >
+              <div className="flex items-start gap-3">
+                <div className="text-green-600 text-2xl mt-1">
+                  <FiCheckCircle />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-lg font-semibold">
+                    Factura enviada al correo
+                  </h3>
+                  <p className="text-slate-600">
+                    Tu factura fue enviada al correo <b>{lastCustomerEmail}</b>.
+                    Gracias. Cualquier inconveniente, contacta a un
+                    administrador de Cantina La Llorona.
+                  </p>
+
+                  <div className="mt-2 flex flex-col gap-2 text-slate-700">
+                    <div className="flex items-center gap-2">
+                      <FiMail /> <span>facturacion@cantilallorona.com</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FiPhone /> <span>+52 55 0000 0000</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FiHelpCircle /> <span>Horario: Lun–Dom 12:00–22:00</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="primary"
+                      onClick={() => {
+                        setDoneModalOpen(false);
+                        setPdfModalOpen(true);
+                      }}
+                    >
+                      Ver PDF
+                    </Button>
+                    <Button onClick={() => setDoneModalOpen(false)}>
+                      Cerrar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Modal>
           </div>
-        </Modal>
+
+          {/* DERECHA: tutorial */}
+          <div className="lg:sticky lg:top-6 h-fit">
+            <Card
+              className="shadow-sm"
+              title="¿Cómo encuentro mi folio y fecha?"
+            >
+              <Text type="secondary">Usa tu nota de consumo. Necesitas:</Text>
+              <ul className="list-disc ml-5 mt-2 text-slate-700">
+                <li>
+                  <b>FOLIO</b> (ese es tu <b>Numcheque</b>)
+                </li>
+                <li>
+                  La <b>fecha</b> impresa debajo del folio
+                </li>
+              </ul>
+              <div className="mt-4 rounded-lg overflow-hidden border border-slate-200">
+                <img
+                  src={NotaEjemplo}
+                  alt="Ejemplo de nota"
+                  className="w-full"
+                />
+              </div>
+              <Text type="secondary" className="block mt-3 text-xs">
+                Si tienes dudas, pide apoyo a un administrador.
+              </Text>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
