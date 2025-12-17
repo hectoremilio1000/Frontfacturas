@@ -10,6 +10,8 @@ import {
   Typography,
   message,
 } from "antd";
+import { Modal, Select, Form } from "antd";
+
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { Dayjs } from "dayjs";
 import utc from "dayjs/plugin/utc";
@@ -40,6 +42,12 @@ type InvoiceRow = {
   taxId: string | null;
   legalName: string | null;
   email: string | null;
+  facturapiStatus?: string | null;
+  cancellationStatus?: string | null;
+  uuid?: string | null;
+  cancellationMotive?: string | null;
+  cancellationRequestedAt?: string | null;
+  canceledAt?: string | null;
 };
 
 type CustomerRow = {
@@ -59,6 +67,11 @@ function fmtMx(iso: string) {
 }
 
 export default function Admin() {
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelRow, setCancelRow] = useState<InvoiceRow | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelForm] = Form.useForm();
+
   const [token, setToken] = useState(localStorage.getItem("adminToken") || "");
   const [activeTab, setActiveTab] = useState<"invoices" | "customers">(
     "invoices"
@@ -88,6 +101,36 @@ export default function Admin() {
   function saveToken() {
     localStorage.setItem("adminToken", token);
     message.success("Token guardado");
+  }
+
+  async function cancelInvoice() {
+    if (!cancelRow) return;
+    const values = await cancelForm.validateFields();
+    setCancelLoading(true);
+    try {
+      const r = await fetch(
+        `${API}/api/admin/invoices/${cancelRow.invoiceId}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": token,
+          },
+          body: JSON.stringify({
+            motive: values.motive,
+            substitution: values.substitution || undefined,
+          }),
+        }
+      );
+      const data = await r.json();
+      if (!r.ok) return message.error(data?.error || "No se pudo cancelar");
+      message.success("Solicitud de cancelación enviada");
+      setCancelOpen(false);
+      setCancelRow(null);
+      await fetchInvoices({ current: 1, pageSize: invPage.pageSize });
+    } finally {
+      setCancelLoading(false);
+    }
   }
 
   async function fetchInvoices(p = invPage) {
@@ -173,6 +216,21 @@ export default function Admin() {
       { title: "Cliente", dataIndex: "legalName", width: 220 },
       { title: "Email", dataIndex: "email", width: 220 },
       {
+        title: "SAT",
+        width: 160,
+        render: (_: any, row: InvoiceRow) => (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs">
+              status: <b>{row.facturapiStatus || "-"}</b>
+            </span>
+            <span className="text-xs">
+              cancel: <b>{row.cancellationStatus || "none"}</b>
+            </span>
+          </div>
+        ),
+      },
+
+      {
         title: "Estado",
         width: 140,
         render: (_: any, row: InvoiceRow) => (
@@ -209,6 +267,52 @@ export default function Admin() {
               <a href={zip} target="_blank" rel="noreferrer">
                 ZIP
               </a>
+            </div>
+          );
+        },
+      },
+      {
+        title: "Acciones",
+        width: 180,
+        render: (_: any, row: InvoiceRow) => {
+          const disabled =
+            row.facturapiStatus === "canceled" ||
+            row.cancellationStatus === "pending";
+
+          return (
+            <div className="flex gap-2">
+              <Button
+                size="small"
+                onClick={async () => {
+                  const r = await fetch(
+                    `${API}/api/admin/invoices/${row.invoiceId}/refresh`,
+                    {
+                      method: "POST",
+                      headers: { "x-admin-token": token },
+                    }
+                  );
+                  const data = await r.json();
+                  if (!r.ok)
+                    return message.error(data?.error || "No se pudo refrescar");
+                  message.success("Actualizado");
+                  await fetchInvoices(invPage);
+                }}
+              >
+                Refrescar
+              </Button>
+
+              <Button
+                size="small"
+                danger
+                disabled={disabled}
+                onClick={() => {
+                  setCancelRow(row);
+                  cancelForm.setFieldsValue({ motive: "02", substitution: "" });
+                  setCancelOpen(true);
+                }}
+              >
+                Cancelar
+              </Button>
             </div>
           );
         },
@@ -434,6 +538,60 @@ export default function Admin() {
             </div>
           </Card>
         </div>
+        <Modal
+          open={cancelOpen}
+          onCancel={() => setCancelOpen(false)}
+          onOk={cancelInvoice}
+          confirmLoading={cancelLoading}
+          title="Cancelar factura"
+          okText="Enviar cancelación"
+          cancelText="Cerrar"
+        >
+          <Form form={cancelForm} layout="vertical">
+            <Form.Item
+              label="Motivo SAT"
+              name="motive"
+              rules={[{ required: true, message: "Selecciona motivo" }]}
+            >
+              <Select
+                options={[
+                  {
+                    value: "01",
+                    label: "01 - Errores con relación (requiere sustitución)",
+                  },
+                  { value: "02", label: "02 - Errores sin relación" },
+                  { value: "03", label: "03 - Operación no llevada a cabo" },
+                  {
+                    value: "04",
+                    label: "04 - Operación nominativa relacionada a global",
+                  },
+                ]}
+              />
+            </Form.Item>
+
+            <Form.Item shouldUpdate={(p, c) => p.motive !== c.motive} noStyle>
+              {({ getFieldValue }) =>
+                getFieldValue("motive") === "01" ? (
+                  <Form.Item
+                    label="UUID / ID de factura sustituta (substitution)"
+                    name="substitution"
+                    rules={[
+                      { required: true, message: "Obligatorio para motivo 01" },
+                    ]}
+                  >
+                    <Input placeholder="UUID o Facturapi invoice_id" />
+                  </Form.Item>
+                ) : null
+              }
+            </Form.Item>
+
+            <div className="text-xs text-slate-500">
+              Nota: la cancelación puede quedar <b>pending</b> si requiere
+              confirmación del cliente. :contentReference[oaicite:6]
+              {/* {(index = 6)} */}
+            </div>
+          </Form>
+        </Modal>
       </div>
     </div>
   );
