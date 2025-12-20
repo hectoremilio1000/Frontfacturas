@@ -1074,9 +1074,17 @@ export default function Public() {
                   className="w-full"
                 />
               </div>
-              <Text type="secondary" className="block mt-3 text-xs">
-                Si tienes dudas, pide apoyo a un administrador.
-              </Text>
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://wa.me/525549242477?text=Hola%20Cantina%20La%20Llorona,%20quiero%20ayuda%20con%20mi%20factura."
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-green-600 hover:text-green-700 font-medium"
+                >
+                  <FaWhatsapp className="text-lg" />
+                  <span>Consultar por WhatsApp</span>
+                </a>
+              </div>
             </Card>
           </div>
         </div>
