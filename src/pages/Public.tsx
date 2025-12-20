@@ -16,6 +16,7 @@ import {
 import ReCAPTCHA from "react-google-recaptcha";
 import { FiMail, FiPhone, FiHelpCircle, FiCheckCircle } from "react-icons/fi";
 import NotaEjemplo from "../assets/nota-ejemplo.png";
+import { FaWhatsapp } from "react-icons/fa";
 
 import type { RadioChangeEvent } from "antd";
 import dayjs, { Dayjs } from "dayjs";
@@ -1015,10 +1016,20 @@ export default function Public() {
                       <FiMail /> <span>facturacion@cantilallorona.com</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <FiPhone /> <span>+52 55 0000 0000</span>
+                      <a
+                        href="https://wa.me/525549242477?text=Hola%20Cantina%20La%20Llorona,%20quiero%20ayuda%20con%20mi%20factura."
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 text-green-600 hover:text-green-700 font-medium"
+                      >
+                        <FaWhatsapp className="text-lg" />
+                        <span>Consultar por WhatsApp</span>
+                      </a>
                     </div>
+
                     <div className="flex items-center gap-2">
-                      <FiHelpCircle /> <span>Horario: Lun–Dom 12:00–22:00</span>
+                      <FiHelpCircle />{" "}
+                      <span>Horario: Lun–Dom 13:00 pm–22:00 pm</span>
                     </div>
                   </div>
 
