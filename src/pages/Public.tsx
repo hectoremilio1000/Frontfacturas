@@ -14,7 +14,7 @@ import {
   Spin,
 } from "antd";
 import ReCAPTCHA from "react-google-recaptcha";
-import { FiMail, FiPhone, FiHelpCircle, FiCheckCircle } from "react-icons/fi";
+import { FiMail, FiHelpCircle, FiCheckCircle } from "react-icons/fi";
 import NotaEjemplo from "../assets/nota-ejemplo.png";
 import { FaWhatsapp } from "react-icons/fa";
 
