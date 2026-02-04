@@ -555,7 +555,7 @@ export default function Public() {
 
   const cfdiUseOptions = useMemo(() => {
     return CFDI_USE_OPTIONS.filter((x) =>
-      x.allowedTaxSystems.includes(String(watchedTaxSystem))
+      x.allowedTaxSystems.includes(String(watchedTaxSystem)),
     ).map((x) => ({ value: x.value, label: x.label }));
   }, [watchedTaxSystem]);
 
@@ -570,7 +570,7 @@ export default function Public() {
 
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedOrderId) || null,
-    [orders, selectedOrderId]
+    [orders, selectedOrderId],
   );
 
   async function lookup() {
@@ -643,7 +643,35 @@ export default function Public() {
 
       const data = await r.json();
       if (!r.ok) {
-        message.error(data?.error || "Error al generar la factura.");
+        const userMsg =
+          data?.userMessage || data?.error || "Error al generar la factura.";
+
+        // Para errores “largos”/explicativos, usa Modal
+        if (data?.code === "SAT_NAME_MISMATCH") {
+          Modal.error({
+            title: "Datos fiscales no coinciden con el SAT",
+            content: (
+              <div className="space-y-2">
+                <p>{userMsg}</p>
+                <ul className="list-disc ml-5">
+                  <li>
+                    Escríbelo en <b>MAYÚSCULAS</b>
+                  </li>
+                  <li>Sin acentos (ej: JOSE, no JOSÉ)</li>
+                  <li>No incluyas “S.A. DE C.V.” u otra razón societaria</li>
+                  <li>Usa tu Constancia de Situación Fiscal</li>
+                </ul>
+              </div>
+            ),
+          });
+        } else {
+          message.error(userMsg);
+        }
+
+        // Si fue recaptcha, fuerza a re-marcar
+        if (data?.code === "RECAPTCHA_INVALID") {
+          setRecaptchaToken(null);
+        }
         return;
       }
 
@@ -937,6 +965,18 @@ export default function Public() {
                           import.meta.env.VITE_RECAPTCHA_SITE_KEY as string
                         }
                         onChange={(token) => setRecaptchaToken(token)}
+                        onExpired={() => {
+                          setRecaptchaToken(null);
+                          message.warning(
+                            "La verificación anti-robot expiró. Marca la casilla otra vez.",
+                          );
+                        }}
+                        onErrored={() => {
+                          setRecaptchaToken(null);
+                          message.error(
+                            "No se pudo cargar reCAPTCHA. Revisa tu conexión e inténtalo.",
+                          );
+                        }}
                       />
                     </div>
 
